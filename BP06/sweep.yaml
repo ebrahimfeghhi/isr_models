@@ -1,0 +1,28 @@
+method: grid
+parameters:
+  hs:
+    value: 200
+  num_letters:
+    values: [26]
+  opt:
+    value: 'Adam'
+  delay_start:
+    value: 3
+  delay_middle:
+    value: 1
+  batch_size:
+    value: 1
+  stateful:
+    value: True
+  alpha_s:
+    value: .7
+  double_trial:
+    value: True 
+  stopping_criteria:
+    value: 0.58
+  num_letters_test:
+    value: 26
+  run_number:
+    values: ['1', '2', '3', '4', '5']
+
+program: run.py
