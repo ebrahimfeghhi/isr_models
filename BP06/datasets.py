@@ -8,18 +8,17 @@ import pickle
 class OneHotLetters_test(Dataset):
 
     def __init__(self, test_path, list_length, num_classes, num_letters=26, 
-    dict_key='', delay_start=0, delay_middle=0, storage_trials=False, delay_storage=0):
+    dict_key='', delay_start=0, delay_middle=0, delay_storage=0):
 
         with open(test_path, 'rb') as f:
             self.test_data = pickle.load(f)
         '''
         Load test trials for a given list length 
-        @param test_path: path to test lists (type should be list)
-        @param list_length: desired list length used for testing
-        @param num_letters: number of letters in vocabulary
-        @param dict_key: dict key to access test_data. If empty, will use list_length as key
-        @param storage_trials: if true, test on trials where the RNN has to recall the same list after a delay 
-        @param delay_storage: amount of storage delay 
+        :param list test_path: path to test lists
+        :param int list_length: desired list length used for testing
+        :param int num_letters: number of letters in vocabulary
+        :param str dict_key: dict key to access test_data. If empty, will use list_length as key
+        :param int delay_storage: amount of storage delay 
         '''
 
         if len(dict_key) == 0:
@@ -35,25 +34,13 @@ class OneHotLetters_test(Dataset):
         recall_duration = list_length + 1
 
         recall_cue = np.ones((num_trials, recall_duration)) * num_letters 
-        
-        if storage_trials: 
-            delay_storage_t = np.ones((X_int.shape[0], delay_storage)) * (num_letters+1)
 
-            self.X = torch.nn.functional.one_hot(torch.from_numpy(np.hstack((delay_start_t, X_int, delay_middle_t,
-            recall_cue, delay_storage_t, recall_cue))).to(torch.long), num_classes=num_classes)
+        self.X = torch.nn.functional.one_hot(torch.from_numpy(np.hstack((delay_start_t, X_int, delay_middle_t,
+        recall_cue))).to(torch.long), num_classes=num_classes)
 
-            end_of_list_cue = np.ones((num_trials, 1)) * num_letters
-            y_int = torch.from_numpy(np.hstack((delay_start_t, X_int, delay_middle_t, X_int, end_of_list_cue, 
-            delay_storage_t, X_int, end_of_list_cue))).to(torch.long)
-            self.y = torch.nn.functional.one_hot(y_int, num_classes=num_classes)
-
-        else:
-            self.X = torch.nn.functional.one_hot(torch.from_numpy(np.hstack((delay_start_t, X_int, delay_middle_t,
-            recall_cue))).to(torch.long), num_classes=num_classes)
-
-            end_of_list_cue = np.ones((num_trials, 1)) * num_letters
-            y_int = torch.from_numpy(np.hstack((delay_start_t, X_int, delay_middle_t, X_int, end_of_list_cue))).to(torch.long)
-            self.y = torch.nn.functional.one_hot(y_int, num_classes=num_classes)
+        end_of_list_cue = np.ones((num_trials, 1)) * num_letters
+        y_int = torch.from_numpy(np.hstack((delay_start_t, X_int, delay_middle_t, X_int, end_of_list_cue))).to(torch.long)
+        self.y = torch.nn.functional.one_hot(y_int, num_classes=num_classes)
 
     def __len__(self):
 
@@ -69,23 +56,24 @@ class OneHotLetters(Dataset):
     repeat_prob=0.0, delay_start=0, delay_middle=0, double_trial=False, storage_frac=0.0, 
     delay_storage=0):
 
-        """ Initialize class to generate letters, represented as one hot vectors in 26 dimensional space. 
-        @param max_length: maximum number of letters 
-        @param num_cycles: number of cycles (1 cycle = set of lists of length 1,...,max_length)
-        @param num_classes: number of classes 
-        @param batch_size: size of each batch
-        @param num_letters: number of letters in vocabulary 
-        @param test_path: path to test_list (type should be set for quick look up)
-        @param repeat_prob: fraction of trials to sample with repetition
-        @param delay_start: how much delay before trial starts 
-        @param delay_middle: how much delay between retrieval and recall 
-        @param double_trial: if true, one list contains two trials 
-        @param storage_frac: if greater than 0, the RNN will be required to recall the previous list
+       """ 
+       Initialize class to generate letters, represented as one hot vectors in 26 dimensional space. 
+        :param int max_length: maximum number of letters 
+        :param int num_cycles: number of cycles (1 cycle = set of lists of length 1,...,max_length)
+        :param int num_classes: number of classes 
+        :param int batch_size: size of each batch
+        :param int num_letters: number of letters in vocabulary 
+        :param str test_path: path to test_list (type should be set for quick look up)
+        :param float repeat_prob: fraction of trials to sample with repetition
+        :param int delay_start: how much delay before trial starts 
+        :param int delay_middle: how much delay between retrieval and recall 
+        :param bool double_trial: if true, one list contains two trials 
+        :param bool storage_frac: if greater than 0, the RNN will be required to recall the previous list
         from it's storage mechanism 
-        @param delay_storage: amount of delay between recalling last item and recalling list again
+        :param int delay_storage: amount of delay between recalling last item and recalling list again
         If specified, trials will be generated in a reproducible manner. 
         """ 
-
+        
         self.max_length = max_length
         self.num_letters = num_letters
         self.num_cycles = num_cycles
@@ -106,23 +94,6 @@ class OneHotLetters(Dataset):
     def __len__(self):
 
         return self.num_cycles * self.max_length
-
-
-    def recall_list_from_storage(self, X_recall, y_recall):
-
-        '''
-        On a certain percentage of trials, we'll force the RNN to recall the previous list after some delay. 
-        '''
-
-        delay_from_previous_list = np.ones(self.delay_storage) * (self.num_letters+1)
-
-        delay_stor = torch.nn.functional.one_hot(torch.from_numpy(delay_from_previous_list).to(torch.long), num_classes=self.num_classes)
-        delay_stor = torch.nn.functional.one_hot(torch.from_numpy(delay_from_previous_list).to(torch.long), num_classes=self.num_classes)
-
-        X_stor = torch.vstack((delay_stor, X_recall))
-        y_stor = torch.vstack((delay_stor, y_recall))
-
-        return X_stor, y_stor
 
     def construct_trial(self): 
 
@@ -192,4 +163,3 @@ class OneHotLetters(Dataset):
             y = torch.cat((y, y2),axis=0)
 
         return X.to(torch.float32), y.to(torch.float32) 
-
