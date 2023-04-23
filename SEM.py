@@ -1,7 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt 
+from analyze_errors import analyze_errors
 
-class MultiTrialSEM():
+    
+class SEM(analyze_errors):
 
     '''
     This class implements to multi-trial version of SEM, as described by Henson (1998).
@@ -31,8 +33,12 @@ class MultiTrialSEM():
         :param int C_i: number of episodes between trials
         :param int C_a: additional contextual change between trials 
         :param int vocab_size_SM: number of items/items 
+        :param bool single_trial_bool: If true, run SEM in single trial mode. 
+        :param str saveFolder: Folder to save figures in.  
         '''
-
+        
+        self.list_length = param_dict['list_length']
+        self.group_size = self.list_length
         self.s0 = param_dict['s0'] 
         self.e0 = param_dict['e0'] 
         self.S = param_dict['S'] 
@@ -52,11 +58,13 @@ class MultiTrialSEM():
         self.C_r = param_dict['C_r']
         self.C_i = param_dict['C_i']
         self.C_a = param_dict['C_a']
+        self.omission = param_dict['omission_val']
         self.vocab_size_SM = param_dict['vocab_size_SM'] # number of types in LTM 
         self.max_tokens = param_dict['max_tokens'] # max number of tokens that can be stored, somewhat arbitrary
+        self.single_trial_bool = param_dict['single_trial']
+        self.save_folder = param_dict['saveFolder']
         self.present_context = 1
         self.suppression = 1 
-        self.omission = -1
         self.list_position_tokens = [] # stores start and end markers for list position
         self.group_position_tokens = [] # stores start and end markers for group position 
         self.stored_tokens = [] # stores only tokens that are in SEM, this is used by SEM
@@ -74,8 +82,11 @@ class MultiTrialSEM():
         self.all_context_tokens = [] 
         self.all_list_position_tokens = []
         self.all_group_position_tokens = []
+        self.num_reps = 0 
+        
+        super().__init__() # init analyze errors class 
 
-    def start_end_markers(self, list_length, group_size, list_pos, group_pos):
+    def start_end_markers(self, list_pos, group_pos):
 
         '''
         Generates start and end markers indicating list position and group position. 
@@ -85,16 +96,15 @@ class MultiTrialSEM():
         :param int list_pos: position of item on list
         :param int group_num: group number that item belongs in 
         '''
-
-        list_pos_marker = np.asarray([np.round(self.s0*self.S**(list_pos-1.0),2), np.round(self.e0*self.E**(list_length-list_pos), 2)])
-        group_pos_marker = np.asarray([np.round(self.s0*self.S**(group_pos-1.0),2), np.round(self.e0*self.E**(group_size-group_pos), 2)])
+        list_pos_marker = np.asarray([np.round(self.s0*self.S**(list_pos-1.0),6), np.round(self.e0*self.E**(self.list_length-list_pos), 6)])
+        group_pos_marker = np.asarray([np.round(self.s0*self.S**(group_pos-1.0),6), np.round(self.e0*self.E**(self.group_size-group_pos), 6)])
 
         return list_pos_marker, group_pos_marker
 
     def overlap_function(self, p_j, p_t):
 
         '''
-        Computes the overlap between between two vectors 
+        Computes the overlap between between two positional/contextual vectors 
 
         :param list p_j: 2x1  positional for response j, or 1x1  contextual marker 
         :param list p_t: 2x1 positional cue for item presented 
@@ -105,48 +115,38 @@ class MultiTrialSEM():
 
         return np.round(np.dot(p_j, p_t)**.5 * exp_term, 5)
 
-    def positional_cues(self, n, plot=False):
+    def positional_cues(self, plot=False):
 
-        '''
-        :param int n: length of list 
-        '''
-
-        pos_matrix = np.zeros((n, ))
 
         s_arr = [] # start marker array
         e_arr = [] # end marker array
-        c_arr = np.ones(n) # context markers 
 
-        for i in range(n):
-            s, e = self.start_end_markers(i+1)
-            s_arr.append(s)
-            e_arr.append(e)
-            c_arr[:i+1] = c_arr[:i+1] * self.E_c
-            
+        for i in range(self.list_length):
+            lp, _ = self.start_end_markers(i+1, i+1)
+            s_arr.append(lp[0])
+            e_arr.append(lp[1])            
         if plot: 
             plt.plot(s_arr, marker='o')
             plt.plot(e_arr, marker='o')
             plt.title("Positional cues")
             plt.show()
+        return s_arr, e_arr
 
-        return s_arr, e_arr, c_arr
-
-    def positional_overlap(self, n, plot=False):
-
-        for i in range(n):
+    def positional_overlap(self, plot=False):
+        plt.figure(figsize=(8,6))
+        for i in range(self.list_length):
             pos_sim = []
-            for j in range(n):
-                s, e =self.start_end_markers(i+1)
-                s2, e2 = self.start_end_markers(j+1)
-                p1 = np.asarray((s,e))
-                p2 = np.asarray((s2, e2))
-                o = self.overlap_function(p1, p2)
+            for j in range(self.list_length):
+                se, _ = self.start_end_markers(i+1, i+1)
+                se2, _ = self.start_end_markers(j+1, j+1)
+                o = self.overlap_function(se, se2)
                 pos_sim.append(o)
             if plot:
-                plt.plot(pos_sim, marker='o')
-
+                plt.plot(pos_sim, marker='o', label=f'Pos {i+1}')
         if plot:
+            plt.ylim(0,1.2)
             plt.title("Positional overlap")
+            plt.legend()
             plt.show()
 
         return pos_sim 
@@ -169,7 +169,7 @@ class MultiTrialSEM():
         len(self.group_position_tokens) == len(self.context_tokens), \
         print("Token lengths are not matching.")
 
-        # if at max limit, pop first token from all lists 
+        # if at max limit, pop first token 
         if len(self.stored_tokens) == self.max_tokens:
             self.stored_tokens.pop(0)
             self.list_position_tokens.pop(0)
@@ -194,12 +194,18 @@ class MultiTrialSEM():
         '''
 
         # before presenting new items
-        self.contextual_change_acrosstrials()
+        
         self.current_list = items 
         self.previously_recalled_list = self.recalled_list
         self.recalled_list = []
         self.list_length = list_length
         self.group_size = group_size
+        
+        # reset response suppression to 0 for single trial SEM 
+        if self.single_trial_bool:
+            self.response_suppression *= 0 
+        else:
+            self.contextual_change_acrosstrials()
         
         for lp, item in enumerate(items):
             
@@ -211,7 +217,7 @@ class MultiTrialSEM():
 
             # obtain start and end markers for list and group position 
             gp = lp % group_size
-            lp_marker, gp_marker = self.start_end_markers(list_length, group_size, lp+1, gp+1)
+            lp_marker, gp_marker = self.start_end_markers(lp+1, gp+1)
             self.add_token(item, lp_marker, gp_marker, self.A_p, self.present_context, 1-self.suppression)
 
         # model effects of retention interval
@@ -254,7 +260,7 @@ class MultiTrialSEM():
         '''
 
         # obtain start and end markers based on cue
-        rl_query, rg_query = self.start_end_markers(self.list_length, self.group_size, recall_list_cue, recall_group_cue)
+        rl_query, rg_query = self.start_end_markers(recall_list_cue, recall_group_cue)
 
         if recalled_item == None:
 
@@ -263,15 +269,15 @@ class MultiTrialSEM():
             # is performed over the type representations in LTM.
             type_strengths = np.zeros(self.vocab_size_SM)
 
-            # compute overlap between retreival position + contextual cues and stored tokens
+            # compute overlap between retrieval position + contextual cues and stored tokens
             # store the maximum overlap strength for each type representation 
             for i in range(len(self.list_position_tokens)):  
-
+                
                 # record item 
                 item = int(self.stored_tokens[i])
 
                 # skip if item is an omission response 
-                if item == -1:
+                if item == self.omission:
                     continue
 
                 # overlap between query list position (lp) and stored list position tokens 
@@ -293,43 +299,32 @@ class MultiTrialSEM():
             # add noise to type strengths 
             type_strengths += np.random.default_rng().normal(0, self.G_c, type_strengths.shape[0])
 
-            self.type_strengths = type_strengths
-
             recalled_item = self.phonological_selection(type_strengths)
+              
+        correct_item = self.current_list[recall_list_cue-1]
             
-            self.compute_output_protrusions(recalled_item, recall_list_cue)
+        self.compute_errors(correct_item, recalled_item, recall_position=recall_list_cue-1)
 
         self.recalled_list.append(recalled_item)
-
+        
         # decay values after recalling an item 
         for i in range(self.C_r):
             self.decay_context_phono_rs()
 
-        # recode recalled_item as a new token 
-        # if omission response, record everything as -1 
-        if recalled_item == -1:
-            self.add_token(self.omission, np.asarray([self.omission,self.omission]), np.asarray([self.omission,self.omission]), self.omission, 
-                                self.omission, self.omission)
+        # recode recalled_item as a new token if operating in multi-trial mode
+        if self.single_trial_bool:
+            self.response_suppression  *= np.exp(-self.R_s)
+            if recalled_item != self.omission:
+                self.response_suppression[recalled_item] = self.suppression # suppress item that was just output 
         else:
-            self.add_token(int(recalled_item), rl_query, rg_query, self.A_p, self.present_context, self.suppression)
+            # if omission response, record everything as -1 
+            if recalled_item == self.omission:
+                self.add_token(self.omission, np.asarray([self.omission,self.omission]), 
+                            np.asarray([self.omission,self.omission]), self.omission, self.omission, self.omission)
+            else:
+                self.add_token(int(recalled_item), rl_query, rg_query, self.A_p, self.present_context, self.suppression)
 
         return recalled_item 
-
-    def compute_output_protrusions(self, recalled_item, recall_list_cue):
-
-        # if recalled item is not in the presented + not an omission, it is an intruson 
-        if recalled_item not in self.current_list and ~np.isnan(recalled_item):
-            self.num_intrusions += 1
-            # check if there is a previously recalled list
-            if len(self.previously_recalled_list) != 0:
-                # check if recalled item is an immediate intrusion 
-                if recalled_item in self.previously_recalled_list:
-                    self.num_immediate_intrusions += 1
-                    # check if immediate intrusion is an output protrusion 
-                    ii_pos = np.argwhere(recalled_item == np.array(self.previously_recalled_list))[0][0] + 1
-                    if ii_pos == recall_list_cue:
-                        self.num_output_protrusions += 1
-                
 
     def phonological_sim(self, item1, item2):
 
@@ -345,16 +340,16 @@ class MultiTrialSEM():
         # strongest item from cueing stage 
         strongest_item = np.argmax(type_strengths)
         type_strengths_phono = np.zeros(self.vocab_size_SM)
-
+        
         # incorporate effects of phonological similarity
         for item, ts in enumerate(type_strengths):
 
             # provide a boost to items that are phonologically similar to the strongest activated item 
-            phono_boost =  self.phonological_sim(item, strongest_item) * \
+            phono_boost = self.phonological_sim(item, strongest_item) * \
             self.phonological_activations[strongest_item]*(1-self.response_suppression[item])
             type_strengths_phono[item] = ts + phono_boost
 
-        type_strengths_phono += np.random.default_rng().normal(0, self.G_p, 1)
+        type_strengths_phono += np.random.default_rng().normal(0, self.G_p, type_strengths_phono.shape[0])
         
         max_activation = np.max(type_strengths_phono)
 
@@ -362,22 +357,27 @@ class MultiTrialSEM():
             recalled_item = np.argmax(type_strengths_phono)
         else:
             recalled_item = self.omission
-            self.num_omissions += 1
 
         return recalled_item
 
-    def simulate_trials_SEM(self, num_trials, list_length, group_size):
-
-        self.list_length = list_length
-        self.group_size = group_size
+    def simulate_trials_SEM(self, num_trials):
+        
+        self.num_trials = num_trials
+        
+        self.presented_list_storage = np.zeros((num_trials, self.list_length))
+        self.recalled_list_storage = np.zeros((num_trials, self.list_length))
 
         for trial in range(num_trials):
 
-            # alternate vocabulary so that consecutive lists don't have overlapping items
-            if trial % 2 == 0:
-                vocab = [0,2,4,6,8,10]
-            else:
-                vocab = [1,3,5,7,9,11]
+            if self.single_trial_bool:
+                vocab = np.arange(0,self.vocab_size_SM,1)
+                
+            # for multi-trial SEM, alternate vocab so consecutive lists have non-overlapping items
+            else: 
+                if trial % 2 == 0:
+                    vocab = np.arange(0,self.vocab_size_SM,2)
+                else:
+                    vocab = np.arange(1,self.vocab_size_SM,2)
 
             # sample list length items from vocab size 
             current_list= np.random.default_rng().choice(vocab, self.list_length, replace=False)
@@ -385,31 +385,21 @@ class MultiTrialSEM():
 
             # recall items
             for i in range(1, self.list_length+1, 1):
-                recalled_letter = self.recall_selection(i,i)
+                _ = self.recall_selection(i,i)
+                
+            # u is unique items
+            # c is number of times they appear in the recalled list
+            _, c = np.unique(self.recalled_list, return_counts=True)
+            self.num_reps += np.argwhere(c>1).shape[0]
+            
+            self.compute_acc()
+            
+            self.compute_input_omissions()
 
-            self.num_correct += self.compute_accuracy()
-
-            self.reshape_stored_tokens()
-
-    def compute_accuracy(self):
-
-        recalled_list = self.stored_tokens[-self.list_length:]
-
-        if list(self.current_list) == recalled_list:
-            return 1
-        else:
-            return 0
-
-    def reshape_stored_tokens(self):
-
-        self.all_stored_tokens.append(self.stored_tokens[-self.list_length*2:])
-        tokens_np = np.array(self.all_stored_tokens).ravel()
-        tokens_np_reshape = np.reshape(tokens_np, (int(tokens_np.shape[0]/self.list_length), self.list_length))
-        self.presented_tokens = tokens_np_reshape[::2]
-        self.recalled_tokens = tokens_np_reshape[1::2]
-
-
-class primacy_model():
+            self.presented_list_storage[trial] = self.current_list
+            self.recalled_list_storage[trial] = self.recalled_list
+            
+class primacy_model(analyze_errors):
 
     def __init__(self, params_dict):
 
@@ -426,7 +416,7 @@ class primacy_model():
         :param int list_length: length of each list 
         :param float output_time: time it takes to output a letter
         '''
-
+        
         self.P = params_dict['P']
         self.M = params_dict['M']
         self.T = params_dict['T']
@@ -441,6 +431,7 @@ class primacy_model():
         self.list_length = params_dict['list_length']
         self.output_time = params_dict['output_time']
         self.dt = params_dict['dt']
+        self.save_folder = params_dict['save_folder']
         
          # inter-onset interval 
         self.IOI = self.ipr + self.blank_period
@@ -452,25 +443,29 @@ class primacy_model():
         self.euler_updates_item_presentation = int(self.ipr/self.dt)
         self.euler_updates_blank = int(self.blank_period/self.dt)
         self.euler_updates_recalled = int(self.output_time/self.dt)
-
+        
+        super().__init__() # init analyze errors class 
+        
     def present_list(self, presented_items):
 
         self.item_activations = np.zeros(self.vocab_size_PM)
         self.start_marker = self.s
         self.L = len(presented_items)
+        self.current_list = presented_items
 
         for pos, item in enumerate(presented_items):
             item_inputs = np.zeros(self.vocab_size_PM)
             item_inputs[item] = self.input_strength
             self.activation_dynamics(False, item_inputs, pos)
 
-
     def recall_list(self):
 
-        self.recalled_items = []
+        self.recalled_list= []
 
         for i in range(self.list_length):
-
+            
+            correct_item = self.current_list[i]
+            
             # add selection noise
             item_act_noisy = self.item_activations + np.random.default_rng().normal(0, self.N, self.vocab_size_PM)
 
@@ -480,39 +475,39 @@ class primacy_model():
 
             # add noise to selected item before comparing to output threshold 
             selected_item_act += np.random.default_rng().normal(0, self.M, 1)[0]
-
+            
             # check if activation of selected item is greater than the threshold
             if selected_item_act >= self.T:
-                self.recalled_items.append(selected_item)
+                recalled_item = selected_item
                 # set activation of selected item to 0 to model response suppression 
                 self.item_activations[selected_item] = 0 
             else:
-                self.recalled_items.append(self.omission)
-
-            self.activation_dynamics(recall_mode=True, item_inputs=np.zeros(self.vocab_size_PM))
-
+                recalled_item = self.omission
                 
+            self.compute_errors(correct_item, recalled_item, i)
+            self.recalled_list.append(recalled_item)
+            self.activation_dynamics(recall_mode=True, item_inputs=np.zeros(self.vocab_size_PM))
+ 
     def activation_dynamics(self, recall_mode, item_inputs, position=None):
 
         # incorporate exponential decay for recall phase
         if recall_mode: 
             for i in range(self.euler_updates_recalled):
                 self.item_activations += -self.D * self.item_activations * self.dt
-            return self.item_activations 
-            
         else: 
+            
             n = np.sum(self.item_activations>0) # number of items presented 
-            presented_item = np.argwhere(item_inputs!=0)[0][0]
+            
             for i in range(self.euler_updates_item_presentation):
 
                 # if the entire list can be rehearsed, then remove exponential decay
                 # otherwise incorporate exp decay
-                if position < self.C:
+                if position <= self.C:
                     exponential_decay = np.zeros(self.vocab_size_PM)
                     exponential_decay_sm = 0
                 else:
                     exponential_decay = -self.D * self.item_activations
-                    exponential_decay_sm = self.start_marker*-self.D # decay for start marker 
+                    exponential_decay_sm = -self.D * self.start_marker # decay for start marker 
                 
                 A = self.start_marker*(1-n/self.P)
                 self.item_activations += (exponential_decay + (A-self.item_activations)*item_inputs)*self.dt 
@@ -520,45 +515,31 @@ class primacy_model():
 
             # incorporate decay effects for inter-item interval 
             # only if cumulative rehearsals are no longer possible
-            if position >= self.C:
+            if position > self.C:
                 for i in range(self.euler_updates_blank):
                     self.item_activations += -self.D * self.item_activations * self.dt
                     self.start_marker += self.start_marker*-self.D*self.dt
 
 
     def simulate_trials_PM(self, num_trials):
+        
+        self.num_trials = num_trials
 
-        presented_list_storage = np.zeros((num_trials, self.list_length))
-        recalled_list_storage = np.zeros((num_trials, self.list_length))
-
-        frac_errors_list = []
-        frac_omissions_list = []
+        self.presented_list_storage = np.zeros((num_trials, self.list_length))
+        self.recalled_list_storage = np.zeros((num_trials, self.list_length))
 
         for i in range(num_trials):
 
-            vocab = np.arange(6)
+            vocab = np.arange(self.vocab_size_PM)
 
             current_list= np.random.default_rng().choice(vocab, self.list_length, replace=False)
 
-            presented_list_storage[i] = current_list
+            self.presented_list_storage[i] = current_list
 
-            item_act = self.present_list(current_list)
-            recalled_list = self.recall_list(item_act, current_list)
-
-            for item in recalled_list:
-                if item not in current_list and item!=-1:
-                    self.intrusions += 1
-
-            recalled_list_storage[i] = recalled_list
-
-        for l in range(self.list_length):
-
-            presented_items_pos_l = presented_list_storage[:, l]
-            recalled_items_pos_l = recalled_list_storage[:, l]
+            self.present_list(current_list)
+            self.recall_list()
             
-            frac_errors = np.round(1- np.argwhere(recalled_items_pos_l==presented_items_pos_l).shape[0] / num_trials,2)
-            frac_omissions = np.argwhere(recalled_items_pos_l==-1).shape[0] / num_trials
-            frac_errors_list.append(frac_errors)
-            frac_omissions_list.append(frac_omissions)
-
-        return frac_errors_list, frac_omissions_list
+            self.recalled_list_storage[i] = self.recalled_list
+            
+            self.compute_acc()
+            self.compute_input_omissions()

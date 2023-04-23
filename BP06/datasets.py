@@ -53,11 +53,10 @@ class OneHotLetters_test(Dataset):
 class OneHotLetters(Dataset):
   
     def __init__(self, max_length, num_cycles, test_path, num_classes, batch_size=1, num_letters=26, 
-    repeat_prob=0.0, delay_start=0, delay_middle=0, double_trial=False, storage_frac=0.0, 
-    delay_storage=0):
+    repeat_prob=0.0, delay_start=0, delay_middle=0, double_trial=False, storage_frac=0.0, delay_storage=0):
 
-       """ 
-       Initialize class to generate letters, represented as one hot vectors in 26 dimensional space. 
+        """ 
+            Initialize class to generate letters, represented as one hot vectors in 26 dimensional space. 
         :param int max_length: maximum number of letters 
         :param int num_cycles: number of cycles (1 cycle = set of lists of length 1,...,max_length)
         :param int num_classes: number of classes 
@@ -90,7 +89,7 @@ class OneHotLetters(Dataset):
 
         with open(test_path, 'rb') as f:
             self.test_data = pickle.load(f)
-    
+
     def __len__(self):
 
         return self.num_cycles * self.max_length

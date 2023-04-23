@@ -92,7 +92,7 @@ class run_test_trials():
             else:
                 dataset = OneHotLetters_test(base + config['test_path_lists'], test_list_length, config['output_size'],
                 config['num_letters'], dict_key, delay_start=config['delay_start'], delay_middle=config['delay_middle'], 
-                storage_trials=storage_trials, delay_storage=config['delay_storage'])
+                delay_storage=config['delay_storage'])
 
             # We'll keep the batch size to 1 for testing
             dataloader = DataLoader(dataset, batch_size=1, shuffle=shuffle)
