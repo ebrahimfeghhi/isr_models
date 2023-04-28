@@ -2,13 +2,12 @@ from cgi import test
 import torch 
 from torch.utils.data import Dataset
 import numpy as np
-from itertools import islice, permutations
 import pickle
 
 class OneHotLetters_test(Dataset):
 
     def __init__(self, test_path, list_length, num_classes, num_letters=26, 
-    dict_key='', delay_start=0, delay_middle=0, delay_storage=0):
+    dict_key='', delay_start=0, delay_middle=0):
 
         with open(test_path, 'rb') as f:
             self.test_data = pickle.load(f)
@@ -18,7 +17,6 @@ class OneHotLetters_test(Dataset):
         :param int list_length: desired list length used for testing
         :param int num_letters: number of letters in vocabulary
         :param str dict_key: dict key to access test_data. If empty, will use list_length as key
-        :param int delay_storage: amount of storage delay 
         '''
 
         if len(dict_key) == 0:
@@ -53,7 +51,7 @@ class OneHotLetters_test(Dataset):
 class OneHotLetters(Dataset):
   
     def __init__(self, max_length, num_cycles, test_path, num_classes, batch_size=1, num_letters=26, 
-    repeat_prob=0.0, delay_start=0, delay_middle=0, double_trial=False, storage_frac=0.0, delay_storage=0):
+    repeat_prob=0.0, delay_start=0, delay_middle=0, double_trial=False):
 
         """ 
             Initialize class to generate letters, represented as one hot vectors in 26 dimensional space. 
@@ -67,10 +65,6 @@ class OneHotLetters(Dataset):
         :param int delay_start: how much delay before trial starts 
         :param int delay_middle: how much delay between retrieval and recall 
         :param bool double_trial: if true, one list contains two trials 
-        :param bool storage_frac: if greater than 0, the RNN will be required to recall the previous list
-        from it's storage mechanism 
-        :param int delay_storage: amount of delay between recalling last item and recalling list again
-        If specified, trials will be generated in a reproducible manner. 
         """ 
         
         self.max_length = max_length
@@ -84,9 +78,7 @@ class OneHotLetters(Dataset):
         self.delay_middle = delay_middle
         self.list_length = 0 
         self.double_trial = double_trial
-        self.storage_frac = storage_frac
-        self.delay_storage = delay_storage 
-
+        
         with open(test_path, 'rb') as f:
             self.test_data = pickle.load(f)
 
@@ -145,18 +137,8 @@ class OneHotLetters(Dataset):
         X, y = self.construct_trial()
 
         if self.double_trial: 
-
-            rng = np.random.default_rng()
-            uniform_0_1 = rng.random()
-
-            if uniform_0_1 < self.storage_frac:
-                # the second list is a fixed delay period followed by recalling the previous list 
-                # these are termed storage trials
-                list_recall = self.delay_start + self.list_length + self.delay_middle
-                X2, y2 = self.recall_list_from_storage(X[list_recall:], y[list_recall:])
-            else:
-                # the second list is a normal list, i.e. presented letters followed by recalling those letters
-                X2, y2 = self.construct_trial()
+            
+            X2, y2 = self.construct_trial()
 
             X = torch.cat((X, X2),axis=0)
             y = torch.cat((y, y2),axis=0)

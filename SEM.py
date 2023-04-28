@@ -94,10 +94,13 @@ class SEM(analyze_errors):
         :param int list_length: length of entire list
         :param int group_size: size of a group 
         :param int list_pos: position of item on list
+        
         :param int group_num: group number that item belongs in 
         '''
-        list_pos_marker = np.asarray([np.round(self.s0*self.S**(list_pos-1.0),6), np.round(self.e0*self.E**(self.list_length-list_pos), 6)])
-        group_pos_marker = np.asarray([np.round(self.s0*self.S**(group_pos-1.0),6), np.round(self.e0*self.E**(self.group_size-group_pos), 6)])
+        list_pos_marker = np.asarray([np.round(self.s0*self.S**(list_pos-1.0),6), 
+                                      np.round(self.e0*self.E**(self.list_length-list_pos), 6)])
+        group_pos_marker = np.asarray([np.round(self.s0*self.S**(group_pos-1.0),6), 
+                                       np.round(self.e0*self.E**(self.group_size-group_pos), 6)])
 
         return list_pos_marker, group_pos_marker
 

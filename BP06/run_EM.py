@@ -5,13 +5,14 @@ from statistics import mean
 import torch 
 from torch.utils.data import DataLoader
 from datasets import OneHotLetters
-from RNNcell import RNN_one_layer
-from run_test_trials import run_test_trials
+from RNNcell import RNN_one_layer_EM
+from run_test_trials_EM import run_test_trials_EM
 torch.set_num_threads(4)
 import wandb
 from simulation_one import simulation_one
 device = torch.device("cpu")
 import argparse
+from utils import encoding_policy_presentation_recall
 
 save_model_path = '/home3/ebrahim/isr/isr_model_review/BP06/saved_models/'
 
@@ -64,13 +65,15 @@ parser.add_argument('--weight_decay', type=float, default=0,
                     help='L2 reg')
 parser.add_argument('--double_trial', type=bool, default=False,
                     help='If true, one trial contains two lists.')
-parser.add_argument('--test_mode', type=str, default='no_grad',
-                    help='If set to no_grad, then weights are not updated during testing.\
-                    If set to grad, then weights are updated during testing.')
 parser.add_argument('--num_letters_test', type=int, default=12,
                     help='Number of letters during testing.')
 parser.add_argument('--run_number', type=str, default='',
                     help='Used when performing multiple runs with the same hyperparameters')
+parser.add_argument('--storage_capacity', type=int, default=3,
+                    help='Number of states that the RNN can store')
+parser.add_argument('--test_mode', type=str, default='no_grad',
+                    help='If set to no_grad, then weights are not updated during testing.\
+                    If set to grad, then weights are updated during testing.')
 
 args = parser.parse_args()
 
@@ -81,7 +84,7 @@ test_path_dict_protrusions = f'test_set/test_lists_cleaned_{args.num_letters_tes
 def train_loop(settings, checkpoint_epoch=10000):
 
     run = wandb.init(project="serial_recall_RNNs", config=settings)
-    run.name = f'stateful_{run.config.stateful}_noise_{run.config.noise_std}_opt_{run.config.opt}_{run.config.grad_mode}_nl_train_{run.config.num_letters}_nl_test_{run.config.num_letters_test}_{run.config.run_number}_dt_{run.config.double_trial}'
+    run.name = f'EM_opt_{run.config.opt}_{run.config.run_number}_dt_{run.config.double_trial}'
     run_folder = save_model_path + wandb.run.name
     os.makedirs(run_folder)
 
@@ -106,8 +109,8 @@ def train_loop(settings, checkpoint_epoch=10000):
 
     loss_fn = torch.nn.CrossEntropyLoss()
  
-    model = RNN_one_layer(wandb.config['input_size'], wandb.config['hs'], wandb.config['output_size'], wandb.config['fb_bool'], 
-    wandb.config['bias'], wandb.config['nonlin'], wandb.config['noise_std'], wandb.config['alpha_s'])
+    model = RNN_one_layer_EM(wandb.config['input_size'], wandb.config['hs'], wandb.config['output_size'], wandb.config['fb_bool'], 
+    wandb.config['bias'], wandb.config['nonlin'], wandb.config['noise_std'], wandb.config['alpha_s'], wandb.config['storage_capacity'])
 
     model = model.to(device)
 
@@ -127,9 +130,18 @@ def train_loop(settings, checkpoint_epoch=10000):
 
     model.train()
     loss_per_1000 = 0.0
-
+    
     for batch_idx, (X, y) in enumerate(train_dataloader):
-
+        
+        list_length = batch_idx%wandb.config['max_length'] + 1
+        
+        EM_encode_timesteps = encoding_policy_presentation_recall(list_length,
+                                            wandb.config['delay_start'], wandb.config['delay_middle'])
+        
+        # define timesteps where retrieval mechanism is on 
+        recall_start_time = wandb.config['delay_start'] + list_length + wandb.config['delay_middle']
+        recall_end_time = recall_start_time + list_length
+    
         X = X.to(device)
         y = y.to(device)
         
@@ -148,6 +160,17 @@ def train_loop(settings, checkpoint_epoch=10000):
 
         # run RNN and compute loss
         for timestep in range(X.shape[1]):
+            
+            if timestep in EM_encode_timesteps:
+                model.encoding_on()
+            else:
+                model.encoding_off()
+                
+            # only retrieve from EM during recall period
+            if timestep == recall_start_time:
+                model.retrieval_on()
+            if timestep == recall_end_time:
+                model.retrieval_off()
 
             # initial feedback 
             if timestep == 0:
@@ -184,7 +207,7 @@ def train_loop(settings, checkpoint_epoch=10000):
 
             if wandb.config['checkpoint_style'] == 'acc':
                 # check accuracy every checkpoint_epoch trials and save model
-                run_test = run_test_trials(model, wandb.config['h0_init_val'])
+                run_test = run_test_trials_EM(model, wandb.config['h0_init_val'])
                 accuracy_dict, mean_acc = checkpoint_acc(run_test)
                 wandb.log(accuracy_dict)
 
@@ -294,7 +317,8 @@ settings = {
     'double_trial': args.double_trial, 
     'grad_mode' : args.test_mode,
     'num_letters_test': args.num_letters_test,
-    'run_number': args.run_number
+    'run_number': args.run_number,
+    'storage_capacity': args.storage_capacity
 }
 
 train_loop(settings)

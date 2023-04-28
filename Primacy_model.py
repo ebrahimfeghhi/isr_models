@@ -35,6 +35,7 @@ class primacy_model(analyze_errors):
         self.output_time = params_dict['output_time']
         self.dt = params_dict['dt']
         self.save_folder = params_dict['save_folder']
+        self.R_s = params_dict['R_s']
         
          # inter-onset interval 
         self.IOI = self.ipr + self.blank_period
@@ -70,7 +71,8 @@ class primacy_model(analyze_errors):
             correct_item = self.current_list[i]
             
             # add selection noise
-            item_act_noisy = self.item_activations + np.random.default_rng().normal(0, self.N, self.vocab_size_PM)
+            item_act_noisy = self.item_activations + \
+            np.random.default_rng().normal(0, self.N, self.vocab_size_PM)
 
             # retrieve strongest activated item 
             selected_item = np.argmax(item_act_noisy)
@@ -82,8 +84,10 @@ class primacy_model(analyze_errors):
             # check if activation of selected item is greater than the threshold
             if selected_item_act >= self.T:
                 recalled_item = selected_item
-                # set activation of selected item to 0 to model response suppression 
-                self.item_activations[selected_item] = 0 
+                
+                # exponentially decay item activation 
+                self.item_activations[selected_item] *= np.exp(-self.R_s)
+                
             else:
                 recalled_item = self.omission
                 
@@ -146,3 +150,7 @@ class primacy_model(analyze_errors):
             
             self.compute_acc()
             self.compute_input_omissions()
+            
+    def softmax(self, activations):
+    
+        return np.exp(activations)/np.sum(np.exp(activations))

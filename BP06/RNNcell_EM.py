@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch
 from EM import EM
 
+# [1] A neural network ...
+
 class RNNcell(nn.Module):
 
     """ Vanilla RNN with:
@@ -14,7 +16,7 @@ class RNNcell(nn.Module):
     """
 
     def __init__(self, data_size, hidden_size, output_size, noise_std, nonlin,
-                bias, feedback_bool, alpha_s):
+                bias, feedback_bool, alpha_s, storage_capacity=2):
 
         """ Init model.
         :param (int) data_size: Input size
@@ -77,57 +79,12 @@ class RNNcell(nn.Module):
     
         return h, i 
 
-class RNN_one_layer(nn.Module):
-
-    """ Single layer RNN """
-
-    def __init__(self, input_size, hidden_size, output_size, feedback_bool, bias, 
-        nonlin='sigmoid', noise_std=0.0, alpha_s=1.0):
-
-        """ Init model.
-        :param int data_size: Input size
-        :param int hidden_size: the size of hidden states
-        :param int output_size: number of classes
-        :param bool feedback_bool: set to True to allow for feedback projections 
-        :param bool bias: Set to True to allow for bias term 
-        """
-        super(RNN_one_layer, self).__init__()
-        self.hidden_size = hidden_size
-        self.output_size = output_size
-            
-        self.RNN = RNNcell(input_size, hidden_size, output_size, noise_std, nonlin, 
-        bias=bias, feedback_bool=feedback_bool, alpha_s=alpha_s)
-
-        self.h2o = nn.Linear(hidden_size, output_size, bias=bias)
-        nn.init.uniform_(self.h2o.weight, -1.0, 1.0)
-
-    def forward(self, data, h_prev, o_prev, i_prev, device):
-        """
-        @param data: input at time t
-        @param h_prev : firing rates at time t-1 
-        @param o_prev: output at time t-1
-        """
-        h, i = self.RNN(data, h_prev, o_prev, i_prev, device)
-
-        output = self.h2o(h)
-
-        return output, h, i
-
-    def init_states(self, batch_size, device, h0_init_val):
-
-        output = torch.zeros(batch_size, self.output_size).to(device)
-        h0 = torch.full((batch_size, self.hidden_size), float(h0_init_val)).to(device)
-        i0 = torch.full((batch_size, self.hidden_size), float(0.0)).to(device)
-       
-        return output, h0, i0
-    
-
 class RNN_one_layer_EM(nn.Module):
 
     """ Single layer RNN """
 
     def __init__(self, input_size, hidden_size, output_size, feedback_bool, bias, 
-        nonlin='sigmoid', noise_std=0.0, alpha_s=1.0, storage_capacity=3, cmpt=0.8):
+        nonlin='sigmoid', noise_std=0.0, alpha_s=1.0, storage_capacity=12, cmpt=0.8):
 
         """ Init model.
         :param int data_size: Input size
@@ -157,21 +114,15 @@ class RNN_one_layer_EM(nn.Module):
         @param h_prev : firing rates at time t-1 
         @param o_prev: output at time t-1
         """
-        
-        cache = {}
-        
         h, i = self.RNN(data, h_prev, o_prev, i_prev, device)
 
         output_no_EM = self.h2o(h)
         
         hpc_input = torch.cat([h, output_no_EM], dim=1)
-
+        
         EM_gate = self.F(self.hpc(hpc_input))
         
-        EM_mem_with_w = self.recall_from_EM(h, EM_gate)
-        
-        EM_mem = EM_mem_with_w[0]
-        w = EM_mem_with_w[1]
+        EM_mem = self.recall_from_EM(h, EM_gate)
         
         EM_mem = EM_mem.to(device)
         
@@ -181,10 +132,7 @@ class RNN_one_layer_EM(nn.Module):
         
         output_EM = self.h2o(h_EM)
         
-        cache['EM_gate'] = EM_gate
-        cache['w'] = w
-        
-        return output_EM, h, i, cache
+        return output_EM, h, i
     
     def recall_from_EM(self, c_t, inps_t, comp_t=None):
 
@@ -206,14 +154,12 @@ class RNN_one_layer_EM(nn.Module):
         tensor, tensor
             updated cell state, recalled item
         """
-        
-        # level of lateral inhibition (beta in paper)
         if comp_t is None:
             comp_t = self.cmpt
 
-        EM_mem_with_w = self.em.get_memory(c_t, leak=0, comp=comp_t, w_input=inps_t)
+        m_t = self.em.get_memory(c_t, leak=0, comp=comp_t, w_input=inps_t)
             
-        return EM_mem_with_w
+        return m_t
     
     def encode_to_EM(self, hidden_state):
         
@@ -228,22 +174,8 @@ class RNN_one_layer_EM(nn.Module):
        
         return output, h0, i0
     
-    def init_em_config(self):
-        self.flush_episodic_memory()
-        self.encoding_off()
-        self.retrieval_off()
-
-    def flush_episodic_memory(self):
-        self.em.flush()
-
     def encoding_off(self):
         self.em.encoding_off = True
-
-    def retrieval_off(self):
-        self.em.retrieval_off = True
-
+        
     def encoding_on(self):
         self.em.encoding_off = False
-
-    def retrieval_on(self):
-        self.em.retrieval_off = False

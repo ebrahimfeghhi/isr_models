@@ -15,14 +15,14 @@ parameters:
   stateful:
     value: True
   alpha_s:
-    value: .7
+    value: 0.7
   double_trial:
-    value: True 
+    value: True
   stopping_criteria:
     value: 0.58
   num_letters_test:
     value: 26
   run_number:
-    values: ['1', '2', '3', '4', '5']
+    values: ['trial_run']
 
-program: run.py
+program: run_EM.py

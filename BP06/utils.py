@@ -33,41 +33,26 @@ def softmax(probs):
 def sigmoid(probs):
     return 1 / (1 + np.exp(-probs))
 
+def encoding_policy_presentation_recall(list_length, delay_start, delay_middle):
+    
+    '''
+    only encodes to EM at the end of list presentation and list recall (once for each)
+    '''
 
-def contextual_input_generator(timestep, list_length, batch_size, doe, context_neurons_size = 100, 
-ramp_down_frac=0.7, S0=1.0, E0=1.0, S=0.8, E=0.8):
-
-    context_signal = torch.zeros(batch_size, context_neurons_size)
-
-    # if delay or end cue is the output, turn context neurons off
-    if doe:
-        return context_signal
-
-    # all ramp down and ramp up neurons will fire at the same value 
-    ramp_down_fr = S0*(S**(timestep))
-    ramp_up_fr = E0*(E**(list_length-(timestep+1)))
-
-    # designate ramp down and ramp up neurons 
-    ramp_down_neurons = int(ramp_down_frac*context_neurons_size)
-
-    # generate contextual signal 
-    context_signal[:, :ramp_down_neurons] = ramp_down_fr
-    context_signal[:, ramp_down_neurons:] = ramp_up_fr
-
-    return context_signal
-
-
-def EM_retrieval(h, h_prev_tensor, batch_idx):
-
-    # no EM store exists 
-    if batch_idx == 0:
-        return h
-
-    cos_sim = torch.nn.CosineSimilarity(dim=1)
-    cos_sim_values = cos_sim(h, h_prev_tensor)
-    softmax = torch.nn.Softmax(dim=0)
-    softmax_cos_sim_values = softmax(cos_sim_values*100)
-    EM = softmax_cos_sim_values@h_prev_tensor
-    h_EM = .9*h + .1*EM
-    return h_EM 
+    EM_encode_timesteps = []
+    
+    list_presented_time = delay_start + list_length - 1 # subtract 1 for 0 indexing
+    list_recalled_time = list_presented_time + delay_middle + list_length
+    EM_encode_timesteps.append(list_presented_time)
+    EM_encode_timesteps.append(list_recalled_time)
+    
+    return EM_encode_timesteps
+    
+    
+    
+        
+        
+        
+        
+    
     

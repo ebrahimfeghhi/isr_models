@@ -5,9 +5,9 @@ from matplotlib import pyplot as plt
 import torch
 torch.set_num_threads(8)
 import seaborn as sns
-from run_test_trials import run_test_trials
+from run_test_trials_EM import run_test_trials_EM
 
-class simulation_one(run_test_trials):
+class simulation_one_EM(run_test_trials_EM):
 
     def __init__(self, model, optimizer, max_length, h0_init_val, test_length, base=''):
 

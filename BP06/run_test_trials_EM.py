@@ -2,8 +2,9 @@ import torch
 import numpy as np
 from datasets import OneHotLetters, OneHotLetters_test
 from torch.utils.data import DataLoader
+from utils import encoding_policy_presentation_recall
 
-class run_test_trials():
+class run_test_trials_EM():
 
     def __init__(self, model, optimizer, h0_init_val):
 
@@ -14,47 +15,40 @@ class run_test_trials():
         self.accuracy_list = []
         self.hidden_activity_dict = {}
 
-    def run_single_trial(self, X_test, y_test, h, i, y_hat_onehot, device, config):
+    def run_single_trial(self, list_length, X_test, y_test, h, i, y_hat_onehot, device, config):
 
-        if config['grad_mode'] == 'no_grad':
-
-            with torch.no_grad():
-
-                y_hat_single_trial = []
-                h_single_trial = []
-                i_single_trial = []
-
-                h_single_trial.append(h)
-                i_single_trial.append(i)
-
-                for timestep in range(X_test.shape[1]):
-                                
-                    y_hat, h, i = self.model(X_test[:, timestep, :], h, y_hat_onehot, i, device)
-                    
-                    y_hat = torch.softmax(y_hat, dim=1)
-                    y_hat_onehot = torch.nn.functional.one_hot(torch.argmax(y_hat, dim=1), 
-                                    num_classes=y_hat.shape[1]).to(torch.float32)
-
-                    y_hat_single_trial.append(y_hat.squeeze())
-                    
-                    h_single_trial.append(h.detach())
-                    i_single_trial.append(i.detach())
-
-        if config['grad_mode'] == 'grad':
-
-            loss = 0.0
+        with torch.no_grad():
 
             y_hat_single_trial = []
             h_single_trial = []
             i_single_trial = []
+            
+            cache_single_trial = {}
 
             h_single_trial.append(h)
             i_single_trial.append(i)
+            
+            EM_encode_timesteps = encoding_policy_presentation_recall(list_length,
+                                            config['delay_start'], config['delay_middle'])
+        
+            # define timesteps where retrieval mechanism is on 
+            recall_start_time = config['delay_start'] + list_length + config['delay_middle']
+            recall_end_time = recall_start_time + list_length
 
-            # iterate to 2nd to last input (b/c ignoring end of list cue)
             for timestep in range(X_test.shape[1]):
-                                
-                y_hat, h, i = self.model(X_test[:, timestep, :], h, y_hat_onehot, i, device)
+                
+                if timestep in EM_encode_timesteps:
+                    self.model.encoding_on()
+                else:
+                    self.model.encoding_off()
+                
+                # only retrieve from EM during recall period
+                if timestep == recall_start_time:
+                    self.model.retrieval_on()
+                if timestep == recall_end_time:
+                    self.model.retrieval_off()    
+                              
+                y_hat, h, i, cache = self.model(X_test[:, timestep, :], h, y_hat_onehot, i, device)
                 
                 y_hat = torch.softmax(y_hat, dim=1)
                 y_hat_onehot = torch.nn.functional.one_hot(torch.argmax(y_hat, dim=1), 
@@ -64,20 +58,17 @@ class run_test_trials():
                 
                 h_single_trial.append(h.detach())
                 i_single_trial.append(i.detach())
+                
+                if timestep == 0:
+                    for key in cache:
+                        cache_single_trial[key] = [cache[key].cpu().numpy()]              
+                else:
+                    for key in cache_single_trial:
+                        cache_single_trial[key].append(cache[key].cpu().numpy())
+                        
 
-                loss += self.loss_fn(y_hat, y_test[:, timestep, :])
-        
-            # Backpropagation
-            self.optimizer.zero_grad()
-            loss.backward()
-
-            # ensure that norm of all gradients falls under clip_factor
-            if config['clipping']: 
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), config['clip_factor'])
-
-            self.optimizer.step()
-
-        return y_hat_single_trial, h_single_trial, i_single_trial, h, i, y_hat_onehot
+        return y_hat_single_trial, h_single_trial, i_single_trial, cache_single_trial, \
+                    h, i, y_hat_onehot
 
 
     def run_model(self, device, test_list_length, config, base, dataloader=None, dict_key='', 
@@ -105,6 +96,7 @@ class run_test_trials():
         X_test_list = []
         h_list = []
         i_list = []
+        cache_store = {}
 
         # generate model_outputs
         for batch_idx, (X_test, y_test) in enumerate(dataloader):
@@ -130,12 +122,19 @@ class run_test_trials():
 
             self.model.eval()
 
-            y_hat_single_trial, h_single_trial, i_single_trial, h, i, y_hat_onehot = \
-            self.run_single_trial(X_test, y_test, h, i, y_hat_onehot, device, config)
-
+            y_hat_single_trial, h_single_trial, i_single_trial, cache_single_trial, \
+            h, i, y_hat_onehot = self.run_single_trial(test_list_length, X_test, y_test, \
+                                                       h, i, y_hat_onehot, device, config)
             y_hat_list.append(torch.stack(y_hat_single_trial))
             h_list.append(torch.stack(h_single_trial))
             i_list.append(torch.stack(i_single_trial))
+            
+            if batch_idx == 0:
+                for key in cache_single_trial:
+                    cache_store[key] = [x for x in cache_single_trial[key]]              
+            else:
+                for key in cache_store:
+                    cache_store[key].append(x for x in cache_single_trial[key])
 
         self.y_test_all = torch.stack(y_test_list).squeeze()
         self.X_test_all = torch.stack(X_test_list).squeeze()
@@ -145,6 +144,7 @@ class run_test_trials():
         self.y_hat_recall = self.y_hat_all[:, td+test_list_length:td+(test_list_length*2), :].cpu().argmax(2)
         self.y_hat = self.y_hat_all.cpu().argmax(2)
         self.h_stacked = torch.stack(h_list).squeeze()
+        self.cache = cache_store
 
     def compute_ppr(self):
 
