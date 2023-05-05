@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from datasets import OneHotLetters, OneHotLetters_test
 from torch.utils.data import DataLoader
-from utils import encoding_policy_presentation_recall
+from protrusion_exp.iti_exp.utils import encoding_policy_presentation_recall
 
 class run_test_trials_EM():
 

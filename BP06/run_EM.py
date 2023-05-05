@@ -12,7 +12,7 @@ import wandb
 from simulation_one import simulation_one
 device = torch.device("cpu")
 import argparse
-from utils import encoding_policy_presentation_recall
+from protrusion_exp.iti_exp.utils import encoding_policy_presentation_recall
 
 save_model_path = '/home3/ebrahim/isr/isr_model_review/BP06/saved_models/'
 
