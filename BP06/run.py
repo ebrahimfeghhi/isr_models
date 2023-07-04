@@ -84,8 +84,13 @@ def train_loop(settings, checkpoint_epoch=10000):
     run.name = f'stateful_{run.config.stateful}_noise_{run.config.noise_std}_opt_{run.config.opt}_{run.config.grad_mode}_nl_train_{run.config.num_letters}_nl_test_{run.config.num_letters_test}_{run.config.run_number}_dt_{run.config.double_trial}'
     run_folder = save_model_path + wandb.run.name
     os.makedirs(run_folder)
+    
+    if wandb.config['double_trial']:
+        extra_units = 4 # one for delay, one for recall cue, and two for context cue
+    else:
+        extra_units = 2 # only need one for delay and one for recall cue 
 
-    wandb.config['input_size'] = wandb.config['output_size'] = wandb.config['num_letters'] + 2
+    wandb.config['input_size'] = wandb.config['output_size'] = wandb.config['num_letters'] + extra_units
 
     loss_list = []
 

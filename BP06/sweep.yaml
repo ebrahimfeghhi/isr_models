@@ -5,15 +5,15 @@ parameters:
   num_letters:
     values: [26]
   opt:
-    value: 'Adam'
+    values: ['Adam', 'SGD']
   delay_start:
-    value: 3
+    value: 2
   delay_middle:
     value: 1
   batch_size:
-    value: 1
+    value: 16
   stateful:
-    value: True
+    value: False
   alpha_s:
     value: 0.7
   double_trial:
@@ -23,6 +23,6 @@ parameters:
   num_letters_test:
     value: 26
   run_number:
-    values: ['trial_run']
+    values: ['PI_1']
 
-program: run_EM.py
+program: run.py
